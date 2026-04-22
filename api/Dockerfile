@@ -5,8 +5,7 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-RUN pip install --user --no-cache-dir -r requirements.txt
-
+RUN pip install --no-cache-dir -r requirements.txt
 
 # -------- STAGE 2: Runtime --------
 FROM python:3.11-slim
@@ -17,8 +16,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
 # Copy only installed deps
-COPY --from=builder /root/.local /root/.local
-
+COPY --from=builder /usr/local /usr/local
 # Copy app code
 COPY . .
 
