@@ -55,7 +55,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install test dependencies
-        run: pip install -r api/tests/requirements.txt
+        run: pip install -r requirements.txt
       - name: Run pytest with coverage
         run: |
           PYTHONPATH=. python -m pytest api/tests --cov=api --cov-report=xml
