@@ -1,41 +1,31 @@
-# -------- STAGE 1: Build --------
-FROM python:3.11-slim AS builder
-
-WORKDIR /app
-
+# syntax=docker/dockerfile:1
+# install dependencies
+FROM python:3.11-slim-bookworm AS builder
+WORKDIR /build
 COPY requirements.txt .
-
+# Install into an isolated prefix so we can copy only the result
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-
-# -------- STAGE 2: Runtime --------
-FROM python:3.11-slim
-
+# lean runtime image
+FROM python:3.11-slim-bookworm
 WORKDIR /app
 
-# Install system deps
-# hadolint ignore=DL3008
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
+# Non-root user (FIX: security requirement)
+RUN addgroup --system app && adduser --system --ingroup app --no-create-home app
 
-# Copy dependencies
+# Copy installed packages from builder — no pip/build tools in final image
 COPY --from=builder /install /usr/local
 
-# Copy app
-COPY . .
+# Copy only application source — never copy .env files
+COPY main.py .
 
-# Create non-root user (safe version)
-RUN adduser --disabled-password --gecos "" appuser
-USER appuser
+RUN chown -R app:app /app
+USER app
 
 EXPOSE 8000
 
-
-
-
-HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
-  CMD curl -f http://localhost:8000/health || exit 1
-
-
+# Health check hits the /health endpoint added in FIX-05
+HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
