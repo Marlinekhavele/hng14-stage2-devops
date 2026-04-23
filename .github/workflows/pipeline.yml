@@ -21,11 +21,12 @@ jobs:
     # ---------------- LINT ----------------
     - name: Install lint tools
       run: |
+        python -m pip install --upgrade pip
         pip install flake8
         npm install -g eslint
         wget -O hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
         chmod +x hadolint
-        mv hadolint /usr/local/bin/
+        sudo mv hadolint /usr/local/bin/
 
     - name: Lint Python
       run: flake8 .
@@ -37,8 +38,10 @@ jobs:
       run: hadolint api/Dockerfile worker/Dockerfile frontend/Dockerfile
 
     # ---------------- TEST ----------------
-    - name: Install test deps
+    - name: Install dependencies
       run: |
+        python -m pip install --upgrade pip
+        pip install -r api/requirements.txt
         pip install pytest pytest-cov
 
     - name: Run tests
@@ -69,6 +72,7 @@ jobs:
     # ---------------- SECURITY SCAN ----------------
     - name: Install Trivy
       run: |
+        sudo apt-get update
         sudo apt-get install -y wget
         wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.50.0_Linux-64bit.deb
         sudo dpkg -i trivy_0.50.0_Linux-64bit.deb
@@ -79,19 +83,15 @@ jobs:
         trivy image --severity CRITICAL --exit-code 1 localhost:5000/worker:${{ github.sha }}
         trivy image --severity CRITICAL --exit-code 1 localhost:5000/frontend:${{ github.sha }}
 
-
-    # ---------------- INSTALL DOCKER COMPOSE ----------------
-    - name: Install Docker Compose
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y docker compose
-
     # ---------------- INTEGRATION TEST ----------------
+    - name: Install jq
+      run: sudo apt-get update && sudo apt-get install -y jq
+
     - name: Start stack
       run: docker compose up -d
 
     - name: Wait for services
-      run: sleep 15
+      run: sleep 20
 
     - name: Integration test
       run: |
@@ -119,5 +119,4 @@ jobs:
       run: |
         docker compose up -d --build
         sleep 10
-
         curl -f http://localhost:8000/health || (echo "Health check failed" && exit 1)
