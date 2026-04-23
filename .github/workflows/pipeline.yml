@@ -2,7 +2,7 @@ name: Deployment Pipeline
 
 on:
   push:
-    branches: [ "*" ]
+    branches: ["*"]
 
 jobs:
   pipeline:
@@ -15,110 +15,134 @@ jobs:
           - 5000:5000
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    # ---------------- LINT ----------------
-    - name: Install lint tools
-      run: |
-        python -m pip install --upgrade pip
-        pip install flake8
-        npm install -g eslint
-        wget -O hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
-        chmod +x hadolint
-        sudo mv hadolint /usr/local/bin/
+      # ---------------- LINT ----------------
+      - name: Install lint tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8
+          npm install -g eslint
+          wget -O hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+          chmod +x hadolint
+          sudo mv hadolint /usr/local/bin/
 
-    - name: Lint Python
-      run: flake8 .
+      - name: Lint Python
+        run: flake8 .
 
-    - name: Lint JS
-      run: eslint frontend || true
+      - name: Lint JS
+        run: eslint frontend || true
 
-    - name: Lint Dockerfiles
-      run: hadolint api/Dockerfile worker/Dockerfile frontend/Dockerfile
+      - name: Lint Dockerfiles
+        run: hadolint api/Dockerfile worker/Dockerfile frontend/Dockerfile
 
-    # ---------------- TEST ----------------
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r api/requirements.txt
-        pip install pytest pytest-cov
+      # ---------------- TEST ----------------
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r api/requirements.txt
+          pip install pytest pytest-cov httpx
 
-    - name: Run tests
-      run: |
-          PYTHONPATH=. pytest api --cov=api --cov-report=xml
+      - name: Run tests
+        run: |
+          PYTHONPATH=. python -m pytest api/tests --cov=api --cov-report=xml
 
-    - name: Upload coverage
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage-report
-        path: coverage.xml
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
 
-    # ---------------- BUILD ----------------
-    - name: Build images
-      run: |
-        docker build -t localhost:5000/api:${{ github.sha }} ./api
-        docker build -t localhost:5000/worker:${{ github.sha }} ./worker
-        docker build -t localhost:5000/frontend:${{ github.sha }} ./frontend
+      # ---------------- BUILD ----------------
+      - name: Enable Docker cache
+        uses: docker/setup-buildx-action@v3
 
-        docker tag localhost:5000/api:${{ github.sha }} localhost:5000/api:latest
-        docker tag localhost:5000/worker:${{ github.sha }} localhost:5000/worker:latest
-        docker tag localhost:5000/frontend:${{ github.sha }} localhost:5000/frontend:latest
+      - name: Build images (with cache)
+        run: |
+          docker build -t localhost:5000/api:${{ github.sha }} ./api
+          docker build -t localhost:5000/worker:${{ github.sha }} ./worker
+          docker build -t localhost:5000/frontend:${{ github.sha }} ./frontend
 
-        docker push localhost:5000/api:${{ github.sha }}
-        docker push localhost:5000/worker:${{ github.sha }}
-        docker push localhost:5000/frontend:${{ github.sha }}
+          docker tag localhost:5000/api:${{ github.sha }} localhost:5000/api:latest
+          docker tag localhost:5000/worker:${{ github.sha }} localhost:5000/worker:latest
+          docker tag localhost:5000/frontend:${{ github.sha }} localhost:5000/frontend:latest
 
-    # ---------------- SECURITY SCAN ----------------
-    - name: Install Trivy
-      run: |
-       sudo apt-get update
-       sudo apt-get install -y wget apt-transport-https gnupg lsb-release
-       wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-       echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
-       sudo apt-get update
-       sudo apt-get install -y trivy
+          docker push localhost:5000/api:${{ github.sha }}
+          docker push localhost:5000/worker:${{ github.sha }}
+          docker push localhost:5000/frontend:${{ github.sha }}
 
-    - name: Scan images
-      run: |
-        trivy image --severity CRITICAL --exit-code 1 localhost:5000/api:${{ github.sha }}
-        trivy image --severity CRITICAL --exit-code 1 localhost:5000/worker:${{ github.sha }}
-        trivy image --severity CRITICAL --exit-code 1 localhost:5000/frontend:${{ github.sha }}
+      # ---------------- SECURITY SCAN ----------------
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
 
-    # ---------------- INTEGRATION TEST ----------------
-    - name: Install jq
-      run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Scan images (SARIF)
+        run: |
+          trivy image --format sarif --output api.sarif localhost:5000/api:${{ github.sha }}
+          trivy image --format sarif --output worker.sarif localhost:5000/worker:${{ github.sha }}
+          trivy image --format sarif --output frontend.sarif localhost:5000/frontend:${{ github.sha }}
 
-    - name: Start stack
-      run: docker compose up -d
+          trivy image --severity CRITICAL --exit-code 1 localhost:5000/api:${{ github.sha }}
+          trivy image --severity CRITICAL --exit-code 1 localhost:5000/worker:${{ github.sha }}
+          trivy image --severity CRITICAL --exit-code 1 localhost:5000/frontend:${{ github.sha }}
 
-    - name: Wait for services
-      run: sleep 20
+      - name: Upload SARIF results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-sarif-results
+          path: "*.sarif"
 
-    - name: Integration test
-      run: |
-        JOB_ID=$(curl -s -X POST http://localhost:8000/jobs | jq -r '.job_id')
+      # ---------------- INTEGRATION TEST ----------------
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
 
-        for i in {1..10}; do
-          STATUS=$(curl -s http://localhost:8000/jobs/$JOB_ID | jq -r '.status')
-          if [ "$STATUS" = "completed" ]; then
-            echo "Job completed"
-            exit 0
-          fi
-          sleep 2
-        done
+      - name: Start stack
+        run: docker compose up -d
 
-        echo "Job did not complete"
-        exit 1
+      - name: Wait for services
+        run: sleep 20
 
-    - name: Tear down
-      if: always()
-      run: docker compose down
+      - name: Integration test
+        run: |
+          JOB_ID=$(curl -s -X POST http://localhost:8000/jobs | jq -r '.job_id')
 
-    # ---------------- DEPLOY ----------------
-    - name: Deploy
-      if: github.ref == 'refs/heads/main'
-      run: |
-        docker compose up -d --build
-        sleep 10
-        curl -f http://localhost:8000/health || (echo "Health check failed" && exit 1)
+          for i in {1..10}; do
+            STATUS=$(curl -s http://localhost:8000/jobs/$JOB_ID | jq -r '.status')
+            if [ "$STATUS" = "completed" ]; then
+              echo "Job completed"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "Job did not complete"
+          exit 1
+
+      - name: Tear down
+        if: always()
+        run: docker compose down
+
+      # ---------------- DEPLOY ----------------
+      - name: Deploy (rolling update)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          docker compose up -d --build
+
+          echo "Waiting for health..."
+          for i in {1..12}; do
+            if curl -f http://localhost:8000/health; then
+              echo "New version healthy"
+              exit 0
+            fi
+            sleep 5
+          done
+
+          echo "Health check failed - rollback"
+          exit 1

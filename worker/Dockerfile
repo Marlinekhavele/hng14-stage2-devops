@@ -1,22 +1,26 @@
+# -------- STAGE 1: Build --------
 FROM python:3.11-slim AS builder
 
 WORKDIR /app
+
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 
+# -------- STAGE 2: Runtime --------
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# copy installed packages
-COPY --from=builder /usr/local /usr/local
+# Copy dependencies
+COPY --from=builder /install /usr/local
 
-# copy code
+# Copy code
 COPY . .
 
-RUN useradd -m appuser
+# Non-root user
+RUN adduser --disabled-password --gecos "" appuser
 USER appuser
 
 HEALTHCHECK CMD pgrep -f worker.py || exit 1

@@ -39,6 +39,11 @@ docker compose up --build
 ```bash
 docker compose ps
 ```
+### 5. run tests locally
+```bash
+python -m pytest api
+```
+
 Expected Output
 - API available at → http://localhost:8000
 - Frontend available at → http://localhost:3000
