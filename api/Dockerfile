@@ -14,6 +14,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install system deps
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 

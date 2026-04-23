@@ -60,9 +60,11 @@ curl http://localhost:8000/jobs/<job_id>
 ```
 
 Expected response:
+```
 {
   "status": "completed"
 }
+```
 
 🐳 Docker Implementation
 - Multi-stage Docker builds
