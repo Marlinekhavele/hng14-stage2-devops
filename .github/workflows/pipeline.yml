@@ -1,4 +1,4 @@
-name: DevOps Pipeline
+name: Deployment Pipeline
 
 on:
   push:
@@ -84,11 +84,11 @@ jobs:
     - name: Install Docker Compose
       run: |
         sudo apt-get update
-        sudo apt-get install -y docker-compose
+        sudo apt-get install -y docker compose
 
     # ---------------- INTEGRATION TEST ----------------
     - name: Start stack
-      run: docker-compose up -d
+      run: docker compose up -d
 
     - name: Wait for services
       run: sleep 15
@@ -111,13 +111,13 @@ jobs:
 
     - name: Tear down
       if: always()
-      run: docker-compose down
+      run: docker compose down
 
     # ---------------- DEPLOY ----------------
     - name: Deploy
       if: github.ref == 'refs/heads/main'
       run: |
-        docker-compose up -d --build
+        docker compose up -d --build
         sleep 10
 
         curl -f http://localhost:8000/health || (echo "Health check failed" && exit 1)
