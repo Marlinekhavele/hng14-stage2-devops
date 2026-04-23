@@ -13,8 +13,8 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install system deps FIRST (as root)
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
-
+# hadolint ignore=DL3008
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 # Copy only installed deps
 COPY --from=builder /usr/local /usr/local
 # Copy app code
