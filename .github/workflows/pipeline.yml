@@ -1,0 +1,116 @@
+name: DevOps Pipeline
+
+on:
+  push:
+    branches: [ "*" ]
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # ---------------- LINT ----------------
+    - name: Install lint tools
+      run: |
+        pip install flake8
+        npm install -g eslint
+        wget -O hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+        chmod +x hadolint
+        mv hadolint /usr/local/bin/
+
+    - name: Lint Python
+      run: flake8 .
+
+    - name: Lint JS
+      run: eslint frontend || true
+
+    - name: Lint Dockerfiles
+      run: hadolint api/Dockerfile worker/Dockerfile frontend/Dockerfile
+
+    # ---------------- TEST ----------------
+    - name: Install test deps
+      run: |
+        pip install pytest pytest-cov
+
+    - name: Run tests
+      run: |
+        pytest api --cov=api --cov-report=xml
+
+    - name: Upload coverage
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: coverage.xml
+
+    # ---------------- BUILD ----------------
+    - name: Build images
+      run: |
+        docker build -t localhost:5000/api:${{ github.sha }} ./api
+        docker build -t localhost:5000/worker:${{ github.sha }} ./worker
+        docker build -t localhost:5000/frontend:${{ github.sha }} ./frontend
+
+        docker tag localhost:5000/api:${{ github.sha }} localhost:5000/api:latest
+        docker tag localhost:5000/worker:${{ github.sha }} localhost:5000/worker:latest
+        docker tag localhost:5000/frontend:${{ github.sha }} localhost:5000/frontend:latest
+
+        docker push localhost:5000/api:${{ github.sha }}
+        docker push localhost:5000/worker:${{ github.sha }}
+        docker push localhost:5000/frontend:${{ github.sha }}
+
+    # ---------------- SECURITY SCAN ----------------
+    - name: Install Trivy
+      run: |
+        sudo apt-get install -y wget
+        wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.50.0_Linux-64bit.deb
+        sudo dpkg -i trivy_0.50.0_Linux-64bit.deb
+
+    - name: Scan images
+      run: |
+        trivy image --severity CRITICAL --exit-code 1 localhost:5000/api:${{ github.sha }}
+        trivy image --severity CRITICAL --exit-code 1 localhost:5000/worker:${{ github.sha }}
+        trivy image --severity CRITICAL --exit-code 1 localhost:5000/frontend:${{ github.sha }}
+
+    # ---------------- INTEGRATION TEST ----------------
+    - name: Start stack
+      run: docker-compose up -d
+
+    - name: Wait for services
+      run: sleep 15
+
+    - name: Integration test
+      run: |
+        JOB_ID=$(curl -s -X POST http://localhost:8000/jobs | jq -r '.job_id')
+
+        for i in {1..10}; do
+          STATUS=$(curl -s http://localhost:8000/jobs/$JOB_ID | jq -r '.status')
+          if [ "$STATUS" = "completed" ]; then
+            echo "Job completed"
+            exit 0
+          fi
+          sleep 2
+        done
+
+        echo "Job did not complete"
+        exit 1
+
+    - name: Tear down
+      if: always()
+      run: docker-compose down
+
+    # ---------------- DEPLOY ----------------
+    - name: Deploy
+      if: github.ref == 'refs/heads/main'
+      run: |
+        docker-compose up -d --build
+        sleep 10
+
+        curl -f http://localhost:8000/health || (echo "Health check failed" && exit 1)
