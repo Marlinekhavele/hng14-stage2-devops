@@ -1,66 +1,89 @@
 # DevOps Stage 2 – Microservices Containerization & CI/CD
 
-## Overview
-This project containerizes and deploys a multi-service job processing system consisting of:
+## 📌 Overview
+This project containerizes and deploys a multi-service job processing system using Docker and a full CI/CD pipeline.
 
-- Frontend (Node.js)
-- API (FastAPI)
-- Worker (Python)
-- Redis (queue)
-
-The system allows users to submit jobs, process them asynchronously, and track their status.
+### Services
+- **Frontend (Node.js)** – Submits and tracks jobs  
+- **API (FastAPI)** – Creates jobs and returns status  
+- **Worker (Python)** – Processes jobs asynchronously  
+- **Redis** – Message queue  
 
 ---
 
-## Prerequisites
-
-Ensure you have the following installed:
-
-- Docker
-- Docker Compose
+## ⚙️ Prerequisites
+- Docker (v20+)
+- Docker Compose (v2)
 - Git
 
 ---
 
-## Setup Instructions
+## 🚀 Setup Instructions
 
 ### 1. Clone the repository
 
 ```bash
-git clone <your-fork-url>
+git clone https://github.com/Marlinekhavele/hng14-stage2-devops
 cd hng14-stage2-devops
+
 ```
-2. Create environment variables
+### 2. Create environment file
 ```bash
 cp .env.example .env
 ```
+### 3. Build and run the application
 ```bash
-REDIS_HOST=redis
-REDIS_PORT=6379
-API_URL=http://api:8000
+docker compose up --build
 ```
-3. Build and run the application
+### 4. Check application status
 ```bash
-docker-compose up --build
+docker compose ps
 ```
-Application URLs
-- Frontend: http://localhost:3000
-- API: http://localhost:8000
+Expected Output
+- API available at → http://localhost:8000
+- Frontend available at → http://localhost:3000
+- Worker running in background
+- Redis running internally (not exposed)
 
-How It Works
-- User submits job via frontend
-- API stores job in Redis queue
-- Worker processes job
-- Status updated in Redis
-- Frontend polls API for updates
-
-Health Checks
-Each service includes Docker healthchecks:
-- API: /health
-- Worker: process check
-- Frontend: HTTP check
-
-Running Tests
+Test the System Create a job
 ```bash
-pytest api
+curl -X POST http://localhost:8000/jobs
 ```
+Check job status
+```bash
+curl http://localhost:8000/jobs/<job_id>
+```
+
+Expected response:
+{
+  "status": "completed"
+}
+
+🐳 Docker Implementation
+- Multi-stage Docker builds
+- All services run as non-root users
+- Healthchecks implemented for all services
+- Minimal production-ready images
+
+🔗 Docker Compose Features
+- Internal network communication
+- Redis not exposed to host
+- Services depend on health checks
+- Environment variable configuration
+- CPU and memory limits defined
+
+🔄 CI/CD Pipeline
+Implemented using GitHub Actions:
+```
+lint → test → build → security scan → integration test → deploy
+```
+- Lint – flake8, eslint, hadolint
+- Test – pytest with Redis mocked
+- Build – Docker images built and tagged
+- Security Scan – Trivy scan (fails on CRITICAL issues)
+- Integration Test – full stack tested inside CI
+- Deploy – runs on main after health check
+
+📄 Documentation
+- [FIXES.md](FIXES.md) – all identified bugs and fixes
+- .env.example – environment variable template
