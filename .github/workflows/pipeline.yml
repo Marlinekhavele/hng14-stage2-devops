@@ -109,7 +109,8 @@ jobs:
          cp .env.example .env
 
       - name: Start stack
-        run: docker compose up -d
+        run: docker compose --env-file .env up -d
+
 
       - name: Wait for services
         run: sleep 20
@@ -132,7 +133,8 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: docker compose down
+        run: docker compose --env-file .env down
+
 
       # ---------------- DEPLOY ----------------
       - name: Deploy (rolling update)
