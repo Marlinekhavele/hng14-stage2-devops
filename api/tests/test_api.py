@@ -1,5 +1,6 @@
-
 from unittest.mock import patch
+
+
 import pytest
 from fastapi.testclient import TestClient
 from api.main import app
@@ -28,3 +29,4 @@ def test_get_job_not_found(mock_redis):
     mock_redis.hget.return_value = None
     res = client.get("/jobs/invalid")
     assert res.status_code == 404
+    
